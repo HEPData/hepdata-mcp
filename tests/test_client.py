@@ -1,3 +1,5 @@
+import gzip
+
 import httpx
 import pytest
 import respx
@@ -192,6 +194,32 @@ async def test_redirects_are_rejected() -> None:
 
 
 @pytest.mark.asyncio
+async def test_same_origin_redirects_are_followed() -> None:
+    with respx.mock(assert_all_called=True) as router:
+        router.get("https://www.hepdata.net/record/ins3103133?format=json&table=Table+1").mock(
+            return_value=httpx.Response(
+                302,
+                headers={"Location": "/record/data/167818/1888814/1/"},
+            )
+        )
+        router.get("https://www.hepdata.net/record/data/167818/1888814/1/").mock(
+            return_value=httpx.Response(
+                200,
+                json={"name": "Table 1", "values": []},
+                headers={"Content-Type": "application/json"},
+            )
+        )
+
+        async with HEPDataClient() as client:
+            result = await client.get_table("ins3103133", "Table 1")
+
+    assert (
+        result.source.url == "https://www.hepdata.net/record/ins3103133?format=json&table=Table+1"
+    )
+    assert result.data == {"name": "Table 1", "values": []}
+
+
+@pytest.mark.asyncio
 async def test_response_size_limit_uses_declared_content_length() -> None:
     with respx.mock(assert_all_called=True) as router:
         router.get("https://www.hepdata.net/record/ins3103133?format=json&light=true").mock(
@@ -221,6 +249,23 @@ async def test_response_size_limit_applies_while_reading_body() -> None:
         async with HEPDataClient(max_response_bytes=5) as client:
             with pytest.raises(HEPDataResponseTooLargeError):
                 await client.get_record("ins3103133")
+
+
+@pytest.mark.asyncio
+async def test_decoded_stream_response_does_not_reapply_content_encoding() -> None:
+    with respx.mock(assert_all_called=True) as router:
+        router.get("https://www.hepdata.net/record/ins3103133?format=json&light=true").mock(
+            return_value=httpx.Response(
+                200,
+                content=gzip.compress(b'{"record":{"id":"ins3103133"}}'),
+                headers={"Content-Encoding": "gzip"},
+            )
+        )
+
+        async with HEPDataClient(max_response_bytes=1_000) as client:
+            result = await client.get_record("ins3103133")
+
+    assert result.data == {"record": {"id": "ins3103133"}}
 
 
 def test_base_url_must_use_https() -> None:

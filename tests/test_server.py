@@ -34,8 +34,10 @@ async def test_create_server_registers_mvp_tools() -> None:
         "search_records",
         "get_record",
         "list_tables",
+        "describe_table",
         "get_table",
         "get_record_exports",
+        "get_record_versions",
         "get_jsonld",
     } <= tool_names
 

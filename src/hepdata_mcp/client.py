@@ -39,6 +39,7 @@ BINARY_EXPORT_FORMATS = SUPPORTED_RECORD_EXPORT_FORMATS - {"json"}
 MAX_SEARCH_QUERY_LENGTH = 500
 MAX_TABLE_NAME_LENGTH = 200
 MAX_RIVET_ANALYSIS_LENGTH = 100
+MAX_SAFE_REDIRECTS = 3
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.NullHandler())
 
@@ -183,6 +184,11 @@ class HEPDataClient:
             data=data,
         )
 
+    async def get_public_json_url(self, url: str) -> tuple[SourceInfo, dict[str, JsonValue]]:
+        """Fetch a same-origin public HEPData JSON URL discovered from HEPData metadata."""
+        public_url = self._validate_public_url(url)
+        return SourceInfo(url=str(public_url)), await self._get_json_object(public_url)
+
     def get_record_exports(self, identifier: str, *, version: int | None = None) -> ExportLinks:
         """Build supported HEPData record export URLs without downloading them."""
         record_identifier = normalize_record_identifier(identifier)
@@ -256,6 +262,12 @@ class HEPDataClient:
             url = url.copy_merge_params({key: str(value) for key, value in params.items()})
         return url
 
+    def _validate_public_url(self, url: str) -> httpx.URL:
+        public_url = httpx.URL(url)
+        if public_url.scheme != self._base_url.scheme or public_url.host != self._base_url.host:
+            raise ValueError("HEPData metadata URL must use the configured HEPData origin.")
+        return public_url
+
     async def _get_json_object(
         self,
         url: httpx.URL,
@@ -295,37 +307,51 @@ class HEPDataClient:
             "Starting HEPData request",
             extra={"request_id": request_id, "url": str(url)},
         )
-        response: httpx.Response | None = None
-        try:
-            request = self._http_client.build_request("GET", url, headers=headers)
-            response = await self._http_client.send(request, stream=True)
-            response = await self._read_bounded_response(response, str(url))
-        except httpx.TransportError as exc:
-            LOGGER.debug(
-                "HEPData request failed",
-                extra={"request_id": request_id, "url": str(url), "error": str(exc)},
-            )
-            raise HEPDataTransportError(str(url), str(exc)) from exc
-        finally:
-            if response is not None:
-                await response.aclose()
+        current_url = url
+        for redirect_count in range(MAX_SAFE_REDIRECTS + 1):
+            response: httpx.Response | None = None
+            try:
+                request = self._http_client.build_request("GET", current_url, headers=headers)
+                response = await self._http_client.send(request, stream=True)
+                response = await self._read_bounded_response(response, str(current_url))
+            except httpx.TransportError as exc:
+                LOGGER.debug(
+                    "HEPData request failed",
+                    extra={"request_id": request_id, "url": str(current_url), "error": str(exc)},
+                )
+                raise HEPDataTransportError(str(current_url), str(exc)) from exc
+            finally:
+                if response is not None:
+                    await response.aclose()
 
+            if not response.is_redirect:
+                break
+
+            redirect_url = _safe_redirect_url(response, current_url)
+            if redirect_url is None:
+                LOGGER.debug(
+                    "HEPData request returned unexpected redirect",
+                    extra={
+                        "request_id": request_id,
+                        "url": str(current_url),
+                        "status_code": response.status_code,
+                    },
+                )
+                raise HEPDataHTTPError(
+                    response.status_code,
+                    str(current_url),
+                    "Unexpected redirect from HEPData.",
+                )
+            if redirect_count == MAX_SAFE_REDIRECTS:
+                raise HEPDataHTTPError(
+                    response.status_code,
+                    str(current_url),
+                    "Too many redirects from HEPData.",
+                )
+            current_url = redirect_url
+
+        assert response is not None
         content = response.content
-
-        if response.is_redirect:
-            LOGGER.debug(
-                "HEPData request returned unexpected redirect",
-                extra={
-                    "request_id": request_id,
-                    "url": str(url),
-                    "status_code": response.status_code,
-                },
-            )
-            raise HEPDataHTTPError(
-                response.status_code,
-                str(url),
-                "Unexpected redirect from HEPData.",
-            )
 
         if response.is_error:
             LOGGER.debug(
@@ -371,9 +397,14 @@ class HEPDataClient:
                 raise HEPDataResponseTooLargeError(url, self._max_response_bytes)
             chunks.append(chunk)
 
+        headers = {
+            key: value
+            for key, value in response.headers.items()
+            if key.lower() not in {"content-encoding", "content-length"}
+        }
         return httpx.Response(
             status_code=response.status_code,
-            headers=response.headers,
+            headers=headers,
             content=b"".join(chunks),
             request=response.request,
             extensions=response.extensions,
@@ -418,6 +449,19 @@ def _clean_input_text(value: str, *, field_name: str, max_length: int) -> str:
 def _is_control_character(character: str) -> bool:
     codepoint = ord(character)
     return codepoint < 32 or codepoint == 127
+
+
+def _safe_redirect_url(response: httpx.Response, current_url: httpx.URL) -> httpx.URL | None:
+    location = response.headers.get("Location")
+    if not location:
+        return None
+
+    redirect_url = current_url.join(location)
+    if redirect_url.scheme != current_url.scheme:
+        return None
+    if redirect_url.host != current_url.host:
+        return None
+    return redirect_url
 
 
 def _response_error_detail(response: httpx.Response, *, max_chars: int = 300) -> str | None:

@@ -13,9 +13,11 @@ from pydantic import BaseModel, Field
 from hepdata_mcp.__about__ import package_version
 from hepdata_mcp.identifiers import TableFormat
 from hepdata_mcp.tools import (
+    describe_table_tool,
     get_jsonld_tool,
     get_record_exports_tool,
     get_record_tool,
+    get_record_versions_tool,
     get_table_tool,
     list_tables_tool,
     search_records_tool,
@@ -97,6 +99,15 @@ def create_server(settings: ServerSettings | None = None) -> FastMCP:
         return await list_tables_tool(identifier, version=version)
 
     @mcp.tool()
+    async def describe_table(
+        identifier: str,
+        table: str,
+        version: int | None = None,
+    ) -> dict[str, object]:
+        """Describe one HEPData table's metadata, variables, qualifiers, and size."""
+        return await describe_table_tool(identifier, table, version=version)
+
+    @mcp.tool()
     async def get_table(
         identifier: str,
         table: str,
@@ -110,6 +121,11 @@ def create_server(settings: ServerSettings | None = None) -> FastMCP:
     async def get_record_exports(identifier: str, version: int | None = None) -> dict[str, object]:
         """Return supported HEPData export URLs without downloading files."""
         return await get_record_exports_tool(identifier, version=version)
+
+    @mcp.tool()
+    async def get_record_versions(identifier: str) -> dict[str, object]:
+        """Return available HEPData record versions and version-specific record URLs."""
+        return await get_record_versions_tool(identifier)
 
     @mcp.tool()
     async def get_jsonld(identifier: str) -> dict[str, object]:

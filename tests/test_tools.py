@@ -3,9 +3,11 @@ import pytest
 import respx
 
 from hepdata_mcp.tools import (
+    describe_table_tool,
     get_jsonld_tool,
     get_record_exports_tool,
     get_record_tool,
+    get_record_versions_tool,
     get_table_tool,
     list_tables_tool,
     search_records_tool,
@@ -119,6 +121,64 @@ async def test_get_table_tool_returns_table_payload() -> None:
 
 
 @pytest.mark.asyncio
+async def test_describe_table_tool_returns_compact_table_metadata() -> None:
+    with respx.mock(assert_all_called=True) as router:
+        router.get("https://www.hepdata.net/record/ins3103133?format=json").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "data_tables": [
+                        {
+                            "id": 1888814,
+                            "name": "Table 1",
+                            "data": {
+                                "json": (
+                                    "https://www.hepdata.net/download/table/ins3103133/Table 1/json"
+                                )
+                            },
+                        }
+                    ]
+                },
+            )
+        )
+        router.get("https://www.hepdata.net/download/table/ins3103133/Table%201/json").mock(
+            return_value=httpx.Response(
+                302,
+                headers={"Location": "/record/data/167818/1888814/1/"},
+            )
+        )
+        router.get("https://www.hepdata.net/record/data/167818/1888814/1/").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "name": "Table 1",
+                    "description": "Differential cross-section",
+                    "doi": "10.17182/hepdata.167818.v1/t1",
+                    "headers": [
+                        {"name": "x", "units": "GeV"},
+                        {"name": "y", "units": "pb"},
+                    ],
+                    "qualifiers": {"SQRT(S)": "13 TeV"},
+                    "values": [{"x": [{"low": "0", "high": "1"}], "y": [{"value": "2"}]}],
+                    "resources": [{"description": "Image", "type": "png"}],
+                },
+                headers={"Content-Type": "application/json"},
+            )
+        )
+
+        payload = await describe_table_tool("ins3103133", "Table 1")
+
+    assert payload["name"] == "Table 1"
+    assert payload["doi"] == "10.17182/hepdata.167818.v1/t1"
+    assert payload["value_count"] == 1
+    assert payload["variables"] == {
+        "independent": [{"name": "x", "units": "GeV"}],
+        "dependent": [{"name": "y", "units": "pb"}],
+    }
+    assert payload["qualifiers"] == {"SQRT(S)": "13 TeV"}
+
+
+@pytest.mark.asyncio
 async def test_get_table_tool_truncates_large_text_payload() -> None:
     large_csv = "x\n" + ("1\n" * 20_000)
     with respx.mock(assert_all_called=True) as router:
@@ -139,6 +199,43 @@ async def test_get_record_exports_tool_returns_links_without_network() -> None:
 
     assert payload["identifier"] == "ins3103133"
     assert any(export["format"] == "json" for export in payload["exports"])
+
+
+@pytest.mark.asyncio
+async def test_get_record_versions_tool_returns_version_urls() -> None:
+    with respx.mock(assert_all_called=True) as router:
+        router.get("https://www.hepdata.net/record/ins3103133?format=json&light=true").mock(
+            return_value=httpx.Response(
+                200,
+                json={"record": {"version": 2}, "version_count": 3},
+            )
+        )
+
+        payload = await get_record_versions_tool("ins3103133")
+
+    assert payload["current_version"] == 2
+    assert payload["latest_version"] == 3
+    assert payload["version_count"] == 3
+    assert payload["versions"] == [
+        {
+            "version": 1,
+            "record_url": "https://www.hepdata.net/record/ins3103133?format=json&version=1&light=true",
+            "is_current": False,
+            "is_latest": False,
+        },
+        {
+            "version": 2,
+            "record_url": "https://www.hepdata.net/record/ins3103133?format=json&version=2&light=true",
+            "is_current": True,
+            "is_latest": False,
+        },
+        {
+            "version": 3,
+            "record_url": "https://www.hepdata.net/record/ins3103133?format=json&version=3&light=true",
+            "is_current": False,
+            "is_latest": True,
+        },
+    ]
 
 
 @pytest.mark.asyncio
