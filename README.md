@@ -16,7 +16,9 @@ uv venv .venv
 uv pip install -e .
 ```
 
-The examples below use `~/.local/uv/hepdata-mcp`. You can install the checkout somewhere else; just replace that path with your chosen directory.
+The examples below install into `~/.local/uv/hepdata-mcp`. You can install the checkout somewhere else; just replace that path with your chosen directory.
+
+MCP client config files should use the full absolute path to the executable. Do not use `~` in JSON or TOML command fields, because many clients launch commands directly without shell expansion.
 
 For development checks:
 
@@ -54,7 +56,13 @@ Resources:
 Use the absolute path to the installed executable:
 
 ```text
-~/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp
+/home/<your-user>/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp
+```
+
+On Linux/macOS, print the exact path with:
+
+```bash
+realpath ~/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp
 ```
 
 ### GitHub Copilot In VS Code
@@ -65,7 +73,7 @@ Create or edit `.vscode/mcp.json`:
 {
   "servers": {
     "hepdata": {
-      "command": "~/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp",
+      "command": "/home/<your-user>/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp",
       "args": []
     }
   }
@@ -86,7 +94,7 @@ Add to `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.hepdata]
-command = "~/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp"
+command = "/home/<your-user>/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp"
 supports_parallel_tool_calls = true
 ```
 
@@ -105,7 +113,7 @@ Project `.mcp.json` example:
   "mcpServers": {
     "hepdata": {
       "type": "stdio",
-      "command": "~/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp",
+      "command": "/home/<your-user>/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp",
       "args": []
     }
   }
@@ -115,7 +123,7 @@ Project `.mcp.json` example:
 CLI alternative:
 
 ```bash
-claude mcp add-json hepdata '{"type":"stdio","command":"~/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp","args":[]}'
+claude m cp add-json hepdata '{"type":"stdio","command":"/home/<your-user>/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp","args":[]}'
 ```
 
 ### Qwen Code
@@ -126,7 +134,7 @@ Add to `~/.qwen/settings.json` or `.qwen/settings.json`:
 {
   "mcpServers": {
     "hepdata": {
-      "command": "~/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp",
+      "command": "/home/<your-user>/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp",
       "args": [],
       "timeout": 30000,
       "trust": false
@@ -143,7 +151,7 @@ Most stdio MCP clients support a similar shape:
 {
   "mcpServers": {
     "hepdata": {
-      "command": "~/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp",
+      "command": "/home/<your-user>/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp",
       "args": []
     }
   }
