@@ -36,6 +36,46 @@ Run the server locally over stdio:
 .venv/bin/hepdata-mcp
 ```
 
+## Docker
+
+Build the image from this checkout:
+
+```bash
+docker build -t hepdata-mcp:local .
+```
+
+Run over stdio for clients that can launch Docker commands:
+
+```bash
+docker run --rm -i hepdata-mcp:local
+```
+
+Example stdio client command:
+
+```json
+{
+  "mcpServers": {
+    "hepdata": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "hepdata-mcp:local"]
+    }
+  }
+}
+```
+
+Run local streamable HTTP:
+
+```bash
+docker run --rm \
+  -p 127.0.0.1:8000:8000 \
+  -e HEPDATA_MCP_ALLOW_REMOTE_HTTP=1 \
+  -e HEPDATA_MCP_TRUST_PROXY_AUTH=1 \
+  hepdata-mcp:local \
+  --transport streamable-http --host 0.0.0.0 --port 8000
+```
+
+The container runs as a non-root user. For remote HTTP deployment, keep the same reverse-proxy, TLS, authentication, and rate-limit requirements described below.
+
 ## Tools
 
 - `search_records`
@@ -125,7 +165,7 @@ Project `.mcp.json` example:
 CLI alternative:
 
 ```bash
-claude m cp add-json hepdata '{"type":"stdio","command":"/home/<your-user>/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp","args":[]}'
+claude mcp add-json hepdata '{"type":"stdio","command":"/home/<your-user>/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp","args":[]}'
 ```
 
 ### Qwen Code
