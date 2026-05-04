@@ -4,50 +4,59 @@ This is an MCP server for discovering HEPData records, listing tables, fetching 
 
 Local stdio is the default and recommended mode. HTTP support exists for local testing and hardened central deployments, but remote HTTP is also supported for multiple clients support.
 
-## Install From This Checkout
+## Run From PyPI
 
-This package is not published to PyPI yet. Install it into a local virtual environment with `uv`:
+HEPData MCP is published on PyPI as [`hepdata-mcp`](https://pypi.org/project/hepdata-mcp/).
+The easiest way to run it is with `uvx`:
 
 ```bash
-mkdir -p ~/.local/uv
-git clone https://github.com/HEPData/hepdata-mcp ~/.local/uv/hepdata-mcp
-cd ~/.local/uv/hepdata-mcp
-uv venv .venv
-uv pip install -e .
+uvx hepdata-mcp
 ```
 
-The examples below install into `~/.local/uv/hepdata-mcp`. You can install the checkout somewhere else; just replace that path with your chosen directory.
+If you want to avoid package resolution during MCP client startup, install the tool once:
 
-MCP client config files should use the full absolute path to the executable. Do not use `~` in JSON or TOML command fields, because many clients launch commands directly without shell expansion.
+```bash
+uv tool install hepdata-mcp
+hepdata-mcp
+```
+
+Upgrade that installed tool with `uv tool upgrade hepdata-mcp`.
+For MCP client configs in this mode, use `hepdata-mcp` as the command with no arguments.
+
+## Install From Source
+
+For development, install this checkout in editable mode:
+
+```bash
+git clone https://github.com/HEPData/hepdata-mcp ~/.local/uv/hepdata-mcp-src
+cd ~/.local/uv/hepdata-mcp-src
+uv sync --all-groups
+```
 
 For development checks:
 
 ```bash
-uv sync --all-groups
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy
 ```
 
-Run the server locally over stdio:
-
-```bash
-.venv/bin/hepdata-mcp
-```
-
 ## Docker
 
-Build the image from this checkout:
+The Docker image is published on Docker Hub as [`hepdata/hepdata-mcp`](https://hub.docker.com/r/hepdata/hepdata-mcp).
+Pull the latest release:
 
 ```bash
-docker build -t hepdata-mcp:local .
+docker pull hepdata/hepdata-mcp:latest
 ```
+
+For reproducible deployments, pin a release tag such as `hepdata/hepdata-mcp:0.1.0`.
 
 Run over stdio for clients that can launch Docker commands:
 
 ```bash
-docker run --rm -i hepdata-mcp:local
+docker run --rm -i hepdata/hepdata-mcp:latest
 ```
 
 Example stdio client command:
@@ -57,7 +66,7 @@ Example stdio client command:
   "mcpServers": {
     "hepdata": {
       "command": "docker",
-      "args": ["run", "--rm", "-i", "hepdata-mcp:local"]
+      "args": ["run", "--rm", "-i", "hepdata/hepdata-mcp:latest"]
     }
   }
 }
@@ -70,11 +79,17 @@ docker run --rm \
   -p 127.0.0.1:8000:8000 \
   -e HEPDATA_MCP_ALLOW_REMOTE_HTTP=1 \
   -e HEPDATA_MCP_TRUST_PROXY_AUTH=1 \
-  hepdata-mcp:local \
+  hepdata/hepdata-mcp:latest \
   --transport streamable-http --host 0.0.0.0 --port 8000
 ```
 
 The container runs as a non-root user. For remote HTTP deployment, keep the same reverse-proxy, TLS, authentication, and rate-limit requirements described below.
+
+Build the image from this checkout for local development:
+
+```bash
+docker build -t hepdata-mcp:local .
+```
 
 ## Tools
 
@@ -95,17 +110,24 @@ Resources:
 
 ## Local MCP Client Setup
 
-Use the absolute path to the installed executable:
+Most MCP clients launch commands directly, without a shell. Use `uvx` as the command and pass the package name as an argument.
 
-```text
-/home/<your-user>/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp
-```
-
-On Linux/macOS, print the exact path with:
+Warm the `uvx` cache once before configuring a client, especially on machines with slow or restricted network access:
 
 ```bash
-realpath ~/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp
+uvx hepdata-mcp --help
 ```
+
+Useful variants:
+
+```bash
+uvx hepdata-mcp==0.1.0
+uvx --refresh hepdata-mcp
+```
+
+If a GUI-launched client cannot find `uvx`, check where `uvx` is installed with `command -v uvx` and use that path as the command.
+On macOS this is commonly needed for clients such as Claude Code; Homebrew installs often use `/opt/homebrew/bin/uvx`, while standalone `uv` installs may use `/Users/<you>/.local/bin/uvx`.
+Use the expanded absolute path because MCP clients usually do not expand `~` or `$HOME`.
 
 ### GitHub Copilot In VS Code
 
@@ -115,8 +137,8 @@ Create or edit `.vscode/mcp.json`:
 {
   "servers": {
     "hepdata": {
-      "command": "/home/<your-user>/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp",
-      "args": []
+      "command": "uvx",
+      "args": ["hepdata-mcp"]
     }
   }
 }
@@ -127,7 +149,7 @@ Then run `MCP: List Servers` from the VS Code command palette and start `hepdata
 For GitHub Copilot CLI:
 
 ```bash
-copilot mcp add hepdata --type stdio -- ~/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp
+copilot mcp add hepdata --type stdio -- uvx hepdata-mcp
 ```
 
 ### Codex
@@ -136,7 +158,8 @@ Add to `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.hepdata]
-command = "/home/<your-user>/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp"
+command = "uvx"
+args = ["hepdata-mcp"]
 supports_parallel_tool_calls = true
 ```
 
@@ -155,8 +178,22 @@ Project `.mcp.json` example:
   "mcpServers": {
     "hepdata": {
       "type": "stdio",
-      "command": "/home/<your-user>/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp",
-      "args": []
+      "command": "uvx",
+      "args": ["hepdata-mcp"]
+    }
+  }
+}
+```
+
+On macOS, if Claude Code cannot find `uvx`, expand the command:
+
+```json
+{
+  "mcpServers": {
+    "hepdata": {
+      "type": "stdio",
+      "command": "/opt/homebrew/bin/uvx",
+      "args": ["hepdata-mcp"]
     }
   }
 }
@@ -165,7 +202,7 @@ Project `.mcp.json` example:
 CLI alternative:
 
 ```bash
-claude mcp add-json hepdata '{"type":"stdio","command":"/home/<your-user>/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp","args":[]}'
+claude mcp add-json hepdata '{"type":"stdio","command":"uvx","args":["hepdata-mcp"]}'
 ```
 
 ### Qwen Code
@@ -176,8 +213,8 @@ Add to `~/.qwen/settings.json` or `.qwen/settings.json`:
 {
   "mcpServers": {
     "hepdata": {
-      "command": "/home/<your-user>/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp",
-      "args": [],
+      "command": "uvx",
+      "args": ["hepdata-mcp"],
       "timeout": 30000,
       "trust": false
     }
@@ -193,8 +230,8 @@ Most stdio MCP clients support a similar shape:
 {
   "mcpServers": {
     "hepdata": {
-      "command": "/home/<your-user>/.local/uv/hepdata-mcp/.venv/bin/hepdata-mcp",
-      "args": []
+      "command": "uvx",
+      "args": ["hepdata-mcp"]
     }
   }
 }
@@ -202,17 +239,10 @@ Most stdio MCP clients support a similar shape:
 
 ## HTTP Mode
 
-First create a new .venv like 
-
-```bash
-uv venv .venv-http
-uv pip install -e .
-```
-
 Start local streamable HTTP:
 
 ```bash
-.venv-http/bin/hepdata-mcp --transport streamable-http --host 127.0.0.1 --port 8000
+uvx hepdata-mcp --transport streamable-http --host 127.0.0.1 --port 8000
 ```
 
 Local URL:
@@ -254,7 +284,7 @@ Remote HTTP binds are intentionally blocked unless both deployment opt-ins are s
 ```bash
 HEPDATA_MCP_ALLOW_REMOTE_HTTP=1 \
 HEPDATA_MCP_TRUST_PROXY_AUTH=1 \
-.venv/bin/hepdata-mcp --transport streamable-http --host 0.0.0.0 --port 8000
+uvx hepdata-mcp --transport streamable-http --host 0.0.0.0 --port 8000
 ```
 
 Only use this behind hardened ingress:
