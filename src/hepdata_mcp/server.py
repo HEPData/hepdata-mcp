@@ -1,13 +1,16 @@
 """MCP server entry point for HEPData."""
 
 import argparse
+import functools
 import os
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from ipaddress import ip_address
 from typing import Literal
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
+from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
 from hepdata_mcp.__about__ import package_version
@@ -28,6 +31,34 @@ DEFAULT_HTTP_HOST = "127.0.0.1"
 DEFAULT_HTTP_PORT = 8000
 DEFAULT_HTTP_PATH = "/mcp"
 MAX_HTTP_PATH_LENGTH = 128
+READ_ONLY_TOOL_ANNOTATIONS = ToolAnnotations(
+    title="Read-only HEPData query",
+    read_only_hint=True,
+    destructive_hint=False,
+    idempotent_hint=True,
+    open_world_hint=True,
+)
+
+
+_AnyTool = Callable[..., Awaitable[object]]
+
+
+def _agent_facing(fn: _AnyTool) -> _AnyTool:
+    """Surface domain validation failures as tool errors agents can act on.
+
+    The SDK only forwards ``ToolError`` messages to clients; any other
+    exception is replaced with a generic crash notice, hiding the useful
+    HEPData error text from the agent.
+    """
+
+    @functools.wraps(fn)
+    async def wrapper(*args: object, **kwargs: object) -> object:
+        try:
+            return await fn(*args, **kwargs)
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+
+    return wrapper
 
 
 class ServerInfo(BaseModel):
@@ -62,29 +93,41 @@ def get_server_info() -> ServerInfo:
     )
 
 
-def create_server(settings: ServerSettings | None = None) -> FastMCP:
-    """Create and configure the FastMCP application."""
+def create_server(settings: ServerSettings | None = None) -> MCPServer:
+    """Create and configure the MCP server application."""
     runtime_settings = settings or ServerSettings()
     validate_server_settings(runtime_settings)
-    mcp = FastMCP(
+    mcp = MCPServer(
         "hepdata-mcp",
-        host=runtime_settings.host,
-        port=runtime_settings.port,
-        streamable_http_path=runtime_settings.path,
-        stateless_http=runtime_settings.stateless_http,
+        title="HEPData MCP Server",
+        description=(
+            "Read-only MCP server for bounded HEPData record discovery and table retrieval."
+        ),
+        version=package_version(),
     )
 
-    @mcp.tool()
+    @mcp.tool(
+        title="Server Info",
+        annotations=READ_ONLY_TOOL_ANNOTATIONS,
+    )
     def server_info() -> ServerInfo:
         """Return server health, version, and capability metadata."""
         return get_server_info()
 
-    @mcp.tool()
+    @mcp.tool(
+        title="Search Records",
+        annotations=READ_ONLY_TOOL_ANNOTATIONS,
+    )
+    @_agent_facing
     async def search_records(query: str, page: int = 1, size: int = 10) -> dict[str, object]:
         """Search HEPData records using HEPData's native search syntax."""
         return await search_records_tool(query, page=page, size=size)
 
-    @mcp.tool()
+    @mcp.tool(
+        title="Get Record",
+        annotations=READ_ONLY_TOOL_ANNOTATIONS,
+    )
+    @_agent_facing
     async def get_record(
         identifier: str,
         version: int | None = None,
@@ -93,12 +136,20 @@ def create_server(settings: ServerSettings | None = None) -> FastMCP:
         """Fetch HEPData record metadata or full record JSON."""
         return await get_record_tool(identifier, version=version, light=light)
 
-    @mcp.tool()
+    @mcp.tool(
+        title="List Tables",
+        annotations=READ_ONLY_TOOL_ANNOTATIONS,
+    )
+    @_agent_facing
     async def list_tables(identifier: str, version: int | None = None) -> dict[str, object]:
         """List tables advertised by a HEPData record."""
         return await list_tables_tool(identifier, version=version)
 
-    @mcp.tool()
+    @mcp.tool(
+        title="Describe Table",
+        annotations=READ_ONLY_TOOL_ANNOTATIONS,
+    )
+    @_agent_facing
     async def describe_table(
         identifier: str,
         table: str,
@@ -107,7 +158,11 @@ def create_server(settings: ServerSettings | None = None) -> FastMCP:
         """Describe one HEPData table's metadata, variables, qualifiers, and size."""
         return await describe_table_tool(identifier, table, version=version)
 
-    @mcp.tool()
+    @mcp.tool(
+        title="Get Table",
+        annotations=READ_ONLY_TOOL_ANNOTATIONS,
+    )
+    @_agent_facing
     async def get_table(
         identifier: str,
         table: str,
@@ -117,17 +172,29 @@ def create_server(settings: ServerSettings | None = None) -> FastMCP:
         """Fetch one HEPData table in JSON, YAML, or CSV format."""
         return await get_table_tool(identifier, table, version=version, format=format)
 
-    @mcp.tool()
+    @mcp.tool(
+        title="Get Record Exports",
+        annotations=READ_ONLY_TOOL_ANNOTATIONS,
+    )
+    @_agent_facing
     async def get_record_exports(identifier: str, version: int | None = None) -> dict[str, object]:
         """Return supported HEPData export URLs without downloading files."""
         return await get_record_exports_tool(identifier, version=version)
 
-    @mcp.tool()
+    @mcp.tool(
+        title="Get Record Versions",
+        annotations=READ_ONLY_TOOL_ANNOTATIONS,
+    )
+    @_agent_facing
     async def get_record_versions(identifier: str) -> dict[str, object]:
         """Return available HEPData record versions and version-specific record URLs."""
         return await get_record_versions_tool(identifier)
 
-    @mcp.tool()
+    @mcp.tool(
+        title="Get JSON-LD",
+        annotations=READ_ONLY_TOOL_ANNOTATIONS,
+    )
+    @_agent_facing
     async def get_jsonld(identifier: str) -> dict[str, object]:
         """Fetch JSON-LD metadata for a HEPData record."""
         return await get_jsonld_tool(identifier)
@@ -155,7 +222,23 @@ def main(argv: Sequence[str] | None = None) -> None:
     """Run the MCP server over the selected transport."""
     settings = settings_from_args(argv)
     validate_transport_security(settings)
-    create_server(settings).run(transport=settings.transport)
+    server = create_server()
+    if settings.transport == "stdio":
+        server.run(transport="stdio")
+    elif settings.transport == "sse":
+        server.run(
+            transport="sse",
+            host=settings.host,
+            port=settings.port,
+        )
+    else:
+        server.run(
+            transport="streamable-http",
+            host=settings.host,
+            port=settings.port,
+            streamable_http_path=settings.path,
+            stateless_http=settings.stateless_http,
+        )
 
 
 def settings_from_args(argv: Sequence[str] | None = None) -> ServerSettings:

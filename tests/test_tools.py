@@ -44,7 +44,7 @@ async def test_get_record_tool_returns_record_payload() -> None:
 @pytest.mark.asyncio
 async def test_list_tables_tool_summarizes_top_level_tables() -> None:
     with respx.mock(assert_all_called=True) as router:
-        router.get("https://www.hepdata.net/record/ins3103133?format=json&light=true").mock(
+        router.get("https://www.hepdata.net/record/ins3103133?format=json").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -86,7 +86,7 @@ async def test_list_tables_tool_summarizes_top_level_tables() -> None:
 @pytest.mark.asyncio
 async def test_list_tables_tool_summarizes_nested_record_tables() -> None:
     with respx.mock(assert_all_called=True) as router:
-        router.get("https://www.hepdata.net/record/12345?format=json&light=true").mock(
+        router.get("https://www.hepdata.net/record/12345?format=json").mock(
             return_value=httpx.Response(200, json={"record": {"data_tables": ["Table A"]}})
         )
 

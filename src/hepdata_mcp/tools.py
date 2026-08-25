@@ -51,10 +51,10 @@ async def list_tables_tool(
     version: int | None = None,
     client: HEPDataClient | None = None,
 ) -> ToolPayload:
-    """List tables advertised by a HEPData record without fetching full table payloads."""
+    """List tables advertised by a HEPData record without fetching table data payloads."""
     async with _client_context(client) as hepdata:
         try:
-            record = await hepdata.get_record(identifier, version=version, light=True)
+            record = await hepdata.get_record(identifier, version=version, light=False)
         except (HEPDataError, ValueError) as exc:
             raise ValueError(str(exc)) from exc
 

@@ -1,4 +1,5 @@
 import pytest
+from mcp.types import CallToolResult
 
 from hepdata_mcp import package_version
 from hepdata_mcp.server import (
@@ -46,7 +47,7 @@ async def test_create_server_registers_mvp_resource_templates() -> None:
     server = create_server()
 
     resource_templates = await server.list_resource_templates()
-    uris = {str(resource.uriTemplate) for resource in resource_templates}
+    uris = {resource.uri_template for resource in resource_templates}
 
     assert {
         "hepdata://record/{identifier}",
@@ -54,15 +55,30 @@ async def test_create_server_registers_mvp_resource_templates() -> None:
     } <= uris
 
 
-async def test_server_info_can_be_called_through_fastmcp() -> None:
+async def test_server_info_can_be_called_through_mcps() -> None:
     server = create_server()
 
     result = await server.call_tool("server_info", {})
 
-    assert isinstance(result, tuple)
-    _, structured_content = result
+    assert isinstance(result, CallToolResult)
+    assert not result.is_error
+    structured_content = result.structured_content
+    assert isinstance(structured_content, dict)
     assert structured_content["name"] == "hepdata-mcp"
     assert structured_content["status"] == "ok"
+
+
+async def test_tools_advertise_read_only_annotations() -> None:
+    server = create_server()
+
+    tools = await server.list_tools()
+    annotations = {tool.name: tool.annotations for tool in tools}
+
+    for name in ("search_records", "get_record", "get_table"):
+        tool_annotations = annotations[name]
+        assert tool_annotations is not None
+        assert tool_annotations.read_only_hint is True
+        assert tool_annotations.destructive_hint is False
 
 
 def test_settings_default_to_stdio() -> None:
