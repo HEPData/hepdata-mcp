@@ -7,7 +7,7 @@ WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
-COPY pyproject.toml uv.lock README.md LICENSE ./
+COPY pyproject.toml uv.lock README.md CHANGELOG.md LICENSE ./
 COPY src ./src
 
 RUN uv sync --frozen --no-dev --no-editable
