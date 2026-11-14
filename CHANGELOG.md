@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.2.1 - 2026-11-14
+
+### Changed
+
+- Updated the MCP Python SDK to 2.3.0 and Pydantic to 2.14.3, and refreshed
+  all transitive dependencies in the lockfile to their latest compatible releases.
+- Updated development tools to mypy 2.4.1, pytest 9.2.0, pytest-asyncio 1.5.0,
+  and Ruff 0.17.5, and the Hatchling build requirement to 1.33.0.
+- Updated GitHub Actions dependencies for CI, package artifacts, Docker builds,
+  and release publishing to their current major versions.
+- Set the async fixture event-loop scope explicitly for pytest-asyncio.
+- GitHub releases now use the matching changelog entry as their release notes.
+
+### Fixed
+
+- Synchronized the lockfile package version and the metadata fallback with the
+  release version.
+
 ## 0.2.0 - 2026-08-25
 
 ### Added

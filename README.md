@@ -51,7 +51,7 @@ Pull the latest release:
 docker pull hepdata/hepdata-mcp:latest
 ```
 
-For reproducible deployments, pin a release tag such as `hepdata/hepdata-mcp:0.1.0`.
+For reproducible deployments, pin a release tag such as `hepdata/hepdata-mcp:0.2.1`.
 
 Run over stdio for clients that can launch Docker commands:
 
@@ -121,7 +121,7 @@ uvx hepdata-mcp --help
 Useful variants:
 
 ```bash
-uvx hepdata-mcp==0.1.0
+uvx hepdata-mcp==0.2.1
 uvx --refresh hepdata-mcp
 ```
 
